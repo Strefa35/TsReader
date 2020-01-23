@@ -39,7 +39,7 @@ enum
 #define TS_AFC_ADAPTATION   (0x2)
 
 
-static std::string ts_unknown_pid_name = "";
+static std::string ts_unknown_pid_name = "-";
 
 wxBEGIN_EVENT_TABLE(TsReaderFrame, wxFrame)
     EVT_MENU(ID_Open,     TsReaderFrame::OnOpen)
@@ -47,6 +47,9 @@ wxBEGIN_EVENT_TABLE(TsReaderFrame, wxFrame)
     EVT_MENU(ID_Exit,     TsReaderFrame::OnExit)
     EVT_MENU(ID_About,    TsReaderFrame::OnAbout)
     EVT_MENU(ID_Logger,   TsReaderFrame::OnLogger)
+
+    EVT_CLOSE(TsReaderFrame::OnClose)
+    EVT_WINDOW_CREATE(TsReaderFrame::OnChildCreate)
 wxEND_EVENT_TABLE()
 
 
@@ -55,6 +58,8 @@ TsReaderFrame::TsReaderFrame(const wxString& title, const wxPoint& pos, const wx
           m_logger(nullptr), m_tsFile(nullptr)
 {
   DBGS(DbgWrite("++%s()\n", __func__);)
+
+  //new wxLogWindow(this, _T("log"));
 
   setPidNames();
 
@@ -68,7 +73,6 @@ TsReaderFrame::TsReaderFrame(const wxString& title, const wxPoint& pos, const wx
 
   wxFont font(wxFontInfo().Family(wxFONTFAMILY_TELETYPE));
   m_TreeCtrl->SetFont(font);
-
 
   m_TreeCtrl->ExpandAll();
   m_TreeCtrl->ScrollTo(m_TreeCtrlRoot);
@@ -88,11 +92,6 @@ TsReaderFrame::~TsReaderFrame()
     DBG1(DbgWrite("[%s] TsFile has been deleted.\n", __func__);)
     delete m_tsFile;
   }
-  if (m_logger)
-  {
-    DBG1(DbgWrite("[%s] Logger has been deleted.\n", __func__);)
-    delete m_logger;
-  }
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
 
@@ -110,7 +109,7 @@ void TsReaderFrame::createMenuBar()
 
   wxMenu *menuTools = new wxMenu;
   menuTools->Append(ID_Logger, "&Logger\tCtrl-L", "Start logger window");
-  menuFile->AppendSeparator();
+  menuTools->AppendSeparator();
   menuTools->Append(ID_Hello, "&Hello...\tCtrl-H", "Help string shown in status bar for this menu item");
   m_menuBar->Append(menuTools, "&Tools");
 
@@ -209,7 +208,11 @@ bool TsReaderFrame::preparePacketsTree(wxTreeItemId& tree_root, std::vector<ts_p
 
     m_progress->SetValue(++packets_idx);
 
-    item_root = m_TreeCtrl->AppendItem(root, wxString::Format("{ %lu / %lu }", packets_idx, packet->file_offset));
+    item_root = m_TreeCtrl->AppendItem(root, wxString::Format("{ %lu }", packets_idx));
+
+    header_root = m_TreeCtrl->AppendItem(item_root, wxString::Format("File"));
+    item_leaf = m_TreeCtrl->AppendItem(header_root, wxString::Format("offset: %lu", packet->file_offset));
+
     header_root = m_TreeCtrl->AppendItem(item_root, wxString::Format("Header"));
     item_leaf = m_TreeCtrl->AppendItem(header_root, wxString::Format("TS Sync Byte: 0x%02x", packet->sync_byte));
     item_leaf = m_TreeCtrl->AppendItem(header_root, wxString::Format("Transport error indicator (TEI): %d", packet->tei));
@@ -222,6 +225,7 @@ bool TsReaderFrame::preparePacketsTree(wxTreeItemId& tree_root, std::vector<ts_p
                                                                     packet->afc & TS_AFC_PAYLOAD    ? 'P' : ' '
                                                                     ));
     item_leaf = m_TreeCtrl->AppendItem(header_root, wxString::Format("Continuity counter: 0x%02x", packet->cc));
+#if 0
     if (packet->afc & TS_AFC_ADAPTATION)
     {
       wxTreeItemId adaptation_root, adaptation_leaf;
@@ -243,6 +247,8 @@ bool TsReaderFrame::preparePacketsTree(wxTreeItemId& tree_root, std::vector<ts_p
       payload_leaf = m_TreeCtrl->AppendItem(payload_root, wxString::Format("Section size: %d", packet->payload.section_size));
 
     }
+#endif // 0
+
     raw_root = m_TreeCtrl->AppendItem(item_root, wxString::Format("RAW data [%d]", packet->raw_size));
     wxString  raw_string = "";
     for (uint8_t raw_idx = 0; raw_idx < packet->raw_size; raw_idx++)
@@ -301,59 +307,129 @@ void TsReaderFrame::parsePat(wxTreeItemId& tree_root, uint8_t* sect_ptr, uint16_
   DBGS(DbgWrite("++%s(sect_ptr: %p, sect_size: %d)\n", __func__, sect_ptr, sect_size);)
   if (sect_ptr && sect_size)
   {
-    wxTreeItemId item_leaf;
-
-    uint8_t   _1byte    = 0;
+    wxTreeItemId item_root, item_leaf, loop_root;
 
     uint16_t  sect_idx  = 0;
-    uint16_t  sect_len  = 0;
-    uint8_t   table_id  = 0;
-    uint16_t  ts_id = 0;
+    uint8_t   pointer_field = 0;
 
-    table_id = sect_ptr[sect_idx++];
-    DBG1(DbgWrite("TID: 0x%02x [%d]\n", table_id, table_id);)
+    uint8_t   bytes[2];
 
-    _1byte = (sect_ptr[sect_idx] & 0xF0) >> 4;
+    uint8_t   tid;
+    uint16_t  section_length;
+    uint16_t  tsid;
+    uint8_t   version_number;
+    uint8_t   section_number;
+    uint8_t   last_section_number;
+    uint8_t   loop_size;
+    uint8_t   loop_cnt;
+    uint32_t  crc32;
 
-    sect_len = ((uint8_t) (sect_ptr[sect_idx]) & 0x0F) << 8;
-    sect_len |= ((uint8_t) (sect_ptr[sect_idx + 1]));
-    sect_idx += 2;
+    pointer_field = sect_ptr[sect_idx++];
+    // skip
+    sect_idx += pointer_field;
 
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("TID: 0x%02X [%d]", table_id, table_id));
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("section_syntax_indicator: %d", _1byte & 0x08 ? 1 : 0));
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("reserved: %d", _1byte & 0x03));
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("section_length: %d", sect_size));
+    // section header
+    tid = sect_ptr[sect_idx];
+    section_length = ((uint8_t) (sect_ptr[sect_idx + 1]) & 0x0F) << 8;
+    section_length |= ((uint8_t) (sect_ptr[sect_idx + 2]));
+    tsid = ((sect_ptr[sect_idx + 3]) << 8) | (sect_ptr[sect_idx + 4]);
+    version_number = (sect_ptr[sect_idx + 5] & 0x3E) >> 1;
+    section_number = sect_ptr[sect_idx + 6];
+    last_section_number = sect_ptr[sect_idx + 7];
 
-    ts_id = ((sect_ptr[sect_idx]) << 8) | (sect_ptr[sect_idx + 1]);
-    sect_idx += 2;
+    bytes[0] = sect_ptr[sect_idx + 1];
+    bytes[1] = sect_ptr[sect_idx + 5];
 
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("ts_id: 0x%04X [%d]", ts_id, ts_id));
+    sect_idx += 8;
 
-    _1byte = sect_ptr[sect_idx++];
+    loop_size = section_length
+                - 5 /* 5 bytes between section length and loop */
+                - 4 /* 4 bytes of CRC32*/;
+    loop_cnt = loop_size / 4;
 
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("reserved: 0x%02X", (_1byte & 0xC0) >> 6));
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("version_number: %d", (_1byte & 0x3E) >> 1));
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("current_next_indicator: %d", (_1byte & 0x01)));
+    crc32 = sect_ptr[sect_idx + loop_size] << 24;
+    crc32 |= sect_ptr[sect_idx + loop_size + 1] << 16;
+    crc32 |= sect_ptr[sect_idx + loop_size + 2] << 8;
+    crc32 |= sect_ptr[sect_idx + loop_size + 3];
 
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("section_number: %d", sect_ptr[sect_idx++]));
-    item_leaf = m_TreeCtrl->AppendItem(tree_root, wxString::Format("last_section_number: %d", sect_ptr[sect_idx++]));
+    DBG1(DbgWrite("   TID: 0x%02x [%d]\n", tid, tid);)
+    DBG1(DbgWrite("   section_length: %d\n", section_length);)
 
+    item_root = m_TreeCtrl->AppendItem(tree_root, wxString::Format("PAT ver. %d", version_number));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("TID: 0x%02X [%d]", tid, tid));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("section_syntax_indicator: %d", bytes[0] & 0x80 ? 1 : 0));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("'0': %d", bytes[0] & 0x40 ? 1 : 0));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("reserved: %d", (bytes[0] & 0x30) >> 4));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("section_length: %d", section_length));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("transport_stream_id: 0x%04X [%d]", tsid, tsid));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("reserved: 0x%02X", (bytes[1] & 0xC0) >> 6));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("version_number: %d", version_number));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("current_next_indicator: %d", (bytes[1] & 0x01)));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("section_number: %d", section_number));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("last_section_number: %d", last_section_number));
+    loop_root = m_TreeCtrl->AppendItem(item_root, wxString::Format("Loop -> N=%d", loop_cnt));
+
+    for (uint8_t loop_idx = 0; loop_idx < loop_cnt; loop_idx++)
+    {
+      uint16_t  program_number = ((sect_ptr[sect_idx]) << 8) | (sect_ptr[sect_idx + 1]);
+      uint16_t  pid = ((sect_ptr[sect_idx + 2] & 0x1F) << 8) | (sect_ptr[sect_idx + 3]);
+
+      sect_idx += 4;
+      if (program_number == 0) // Network PID
+      {
+        item_leaf = m_TreeCtrl->AppendItem(loop_root, wxString::Format("NIT (PID: 0x%04X [%d])", pid, pid));
+        parseNit(item_leaf, pid);
+      }
+      else // PMT PID
+      {
+        item_leaf = m_TreeCtrl->AppendItem(loop_root, wxString::Format("PMT Program #%d (PID: 0x%04X [%d])", program_number, pid, pid));
+        parsePmt(item_leaf, pid);
+      }
+    }
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("CRC32: 0x%08X", crc32));
 
   }
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
 
+void TsReaderFrame::parseNit(wxTreeItemId& tree_root, uint16_t pid)
+{
+  std::vector<ts_packet_t> packets;
+
+  DBGS(DbgWrite("++%s(pid: 0x%04X [%d])\n", __func__, pid, pid);)
+  if (m_tsFile->getTsPackets(pid, packets))
+  {
+    if (packets.size())
+    {
+      preparePacketsTree(tree_root, packets);
+    }
+  }
+  DBGR(DbgWrite("--%s()\n", __func__);)
+}
+
+void TsReaderFrame::parsePmt(wxTreeItemId& tree_root, uint16_t pid)
+{
+#if 0
+  std::vector<ts_packet_t> packets;
+
+  DBGS(DbgWrite("++%s(pid: 0x%04X [%d])\n", __func__, pid, pid);)
+  if (m_tsFile->getTsPackets(pid, packets))
+  {
+    if (packets.size())
+    {
+      preparePacketsTree(tree_root, packets);
+    }
+  }
+  DBGR(DbgWrite("--%s()\n", __func__);)
+#endif
+}
 
 void TsReaderFrame::parseSection(wxTreeItemId& tree_root, uint16_t pid, uint8_t* sect_ptr, uint16_t sect_size)
 {
   DBGS(DbgWrite("++%s(pid: 0x%04x [%d], sect_ptr: %p, sect_size: %d)\n", __func__, pid, pid, sect_ptr, sect_size);)
   if (sect_ptr && sect_size)
   {
-    uint16_t  sect_idx = 0;
-    uint8_t   table_id = sect_ptr[sect_idx];
-
-    DBG1(DbgWrite("TID: 0x%02x [%d]\n", table_id, table_id);)
-    switch (table_id)
+    switch (pid)
     {
       case 0x00: // PAT
       {
@@ -403,15 +479,14 @@ void TsReaderFrame::parsePacket(wxTreeItemId& root_tree, ts_packet_t* packet_ptr
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
 
-void TsReaderFrame::prepareSectionsTree(wxTreeItemId& tree_root, std::vector<ts_packet_t>& packets)
+void TsReaderFrame::prepareSectionsTree(wxTreeItemId& tree_root, uint16_t pid, std::vector<ts_packet_t>& packets)
 {
   uint64_t packets_cnt = packets.size();
   uint64_t packets_idx = 0;
   wxTreeItemId item_root, item_leaf;
 
-  DBGS(DbgWrite("++%s(VECTOR)\n", __func__);)
-  DBGS(DbgWrite("[%s] Packets cnt: %lu\n", __func__, packets_cnt);)
-
+  DBGS(DbgWrite("++%s(pid: 0x%04x [%d])\n", __func__, pid, pid);)
+  DBGS(DbgWrite("   [%s] Packets cnt: %lu\n", __func__, packets_cnt);)
   m_progress->SetRange(packets_cnt);
   item_root = m_TreeCtrl->AppendItem(tree_root, wxString::Format("Sections [%lu]", packets_cnt));
   for (uint64_t i = 0; i < packets_cnt; i++)
@@ -421,7 +496,7 @@ void TsReaderFrame::prepareSectionsTree(wxTreeItemId& tree_root, std::vector<ts_
     DBG2(DbgWrite("Packet %d, size: %d\n", i, packet->raw_size);)
     DBG3(DbgMemory(packet->raw_tab, packet->raw_size);)
 
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("{ %lu }", i + 1));
+    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("{ section: %lu }", i + 1));
     parsePacket(item_leaf, packet);
 
     m_progress->SetValue(++packets_idx);
@@ -455,7 +530,7 @@ bool TsReaderFrame::preparePidsTree(std::map<uint16_t, ts_pid_t>& pids)
 
       if ((pid.pid >= 0) && (pid.pid <= 31))
       {
-        prepareSectionsTree(item_root, pid.packets);
+        prepareSectionsTree(item_root, pid.pid, pid.packets);
       }
     }
   }
@@ -472,17 +547,11 @@ void TsReaderFrame::parseTsFile(wxString& fileName)
   std::string name(fileName.c_str());
 
   DBGS(DbgWrite("++%s(fileName: %s)\n", __func__, fileName.c_str());)
-
-  //wxLogMessage("++%s(fileName: %s)", __func__, fileName.c_str());
-  //wxLogMessage("[%s]  name: %s", __func__, name.c_str());
-
   if (m_tsFile)
   {
     delete m_tsFile;
   }
-
   m_TreeCtrl->DeleteChildren(m_TreeCtrlRoot);
-
   m_tsFile = new TsFileBase(name);
   if (m_tsFile)
   {
@@ -498,9 +567,14 @@ void TsReaderFrame::parseTsFile(wxString& fileName)
       DBG1(DbgWrite("TS Packets cnt: %d\n", packets.size());)
       DBG1(DbgWrite("   TS Pids cnt: %d\n", pids.size());)
 
-      //preparePacketsTree(m_TreeCtrlRoot, packets);
-      preparePidsTree(pids);
-
+      if (packets.size())
+      {
+        preparePacketsTree(m_TreeCtrlRoot, packets);
+      }
+      if (pids.size())
+      {
+        preparePidsTree(pids);
+      }
     }
     else
     {
@@ -511,20 +585,6 @@ void TsReaderFrame::parseTsFile(wxString& fileName)
   {
     DBGW(DbgWrite("[WARNING][%s:%d] Something went wrong\n", __func__, __LINE__);)
   }
-
-  //TsFileBase  tsfile(name);
-
-  //tsfile.parse();
-
-  //tsfile.toLog();
-
-  //tsfile.getTree(*m_TreeCtrl, m_TreeCtrlRoot);
-
-  //m_TreeCtrl->ExpandAll();
-  //m_TreeCtrl->ScrollTo(m_TreeCtrlRoot);
-
-  //wxLogMessage("++%s()", __func__);
-
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
 
@@ -546,19 +606,9 @@ void TsReaderFrame::OnOpen(wxCommandEvent& event)
     fileName.append(openFileDialog.GetFilename());
 
     name.append(openFileDialog.GetFilename());
-
     SetStatusText(name, 0);
 
-
-    //m_TreeCtrl->Delete(m_TreeCtrlRoot);
-
-    //m_TreeCtrlRoot = m_TreeCtrl->AddRoot(_T("TS stream"));
-
     parseTsFile(fileName);
-
-    //m_TreeCtrl->ExpandAll();
-    //m_TreeCtrl->ScrollTo(m_TreeCtrlRoot);
-
   }
   else
   {
@@ -577,8 +627,48 @@ void TsReaderFrame::OnLogger(wxCommandEvent& event)
 {
   if (!m_logger)
   {
-    m_logger = new TsLogFrame("Logger");
+    m_logger = new TsLogFrame(this, "Logger");
     m_logger->Show(true);
   }
 }
 
+void TsReaderFrame::OnChildCreate(wxWindowCreateEvent& event)
+{
+  wxWindow* w = event.GetWindow();
+
+  DBGS(DbgWrite("++%s()\n", __func__);)
+  if (w)
+  {
+    DBG1(DbgWrite("   [%s] Logger created\n", __func__);)
+    w->Connect(wxEVT_DESTROY, wxWindowDestroyEventHandler(TsReaderFrame::OnChildDestroy), NULL, this);
+  }
+  else
+  {
+    DBG1(DbgWrite("   [%s] Child created\n", __func__);)
+  }
+  DBGR(DbgWrite("--%s()\n", __func__);)
+}
+
+void TsReaderFrame::OnChildDestroy(wxWindowDestroyEvent& event)
+{
+  wxWindow* w = event.GetWindow();
+
+  DBGS(DbgWrite("++%s()\n", __func__);)
+  if (w == m_logger)
+  {
+    DBG1(DbgWrite("   [%s] Logger Window\n", __func__);)
+    //delete m_logger;
+    m_logger = nullptr;
+  }
+  DBGR(DbgWrite("--%s()\n", __func__);)
+}
+
+void TsReaderFrame::OnClose(wxCloseEvent& event)
+{
+  DBGS(DbgWrite("++%s()\n", __func__);)
+  if (event.GetId() == this->GetId())
+  {
+    this->Destroy();
+  }
+  DBGR(DbgWrite("--%s()\n", __func__);)
+}

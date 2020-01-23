@@ -20,15 +20,17 @@ class TsReaderFrame : public wxFrame
 
     void parseTsFile(wxString&  fileName);
 
+    void parsePat(wxTreeItemId& tree_root, uint8_t* sect_ptr, uint16_t sect_size);
+    void parseNit(wxTreeItemId& tree_root, uint16_t pid);
+    void parsePmt(wxTreeItemId& tree_root, uint16_t pid);
+
     void parseSection(wxTreeItemId& tree_root, uint16_t pid, uint8_t* sect_ptr, uint16_t sect_size);
     void parsePacket(wxTreeItemId& tree_root, ts_packet_t* packet_ptr);
-
-    void parsePat(wxTreeItemId& tree_root, uint8_t* sect_ptr, uint16_t sect_size);
 
     bool preparePacketsTree(wxTreeItemId& tree_root, std::vector<ts_packet_t>& packets);
     bool preparePacketsTree(wxTreeItemId& tree_root, std::list<ts_packet_t>& packets);
 
-    void prepareSectionsTree(wxTreeItemId& tree_root, std::vector<ts_packet_t>& packets);
+    void prepareSectionsTree(wxTreeItemId& tree_root, uint16_t pid, std::vector<ts_packet_t>& packets);
 
     bool preparePidsTree(std::map<uint16_t, ts_pid_t>& pids);
 
@@ -41,6 +43,10 @@ class TsReaderFrame : public wxFrame
     void OnExit(wxCommandEvent& event);
     void OnAbout(wxCommandEvent& event);
     void OnLogger(wxCommandEvent& event);
+
+    void OnChildCreate(wxWindowCreateEvent& event);
+    void OnChildDestroy(wxWindowDestroyEvent& event);
+    void OnClose(wxCloseEvent& event);
 
     wxDECLARE_EVENT_TABLE();
 

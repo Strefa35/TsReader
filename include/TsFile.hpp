@@ -15,6 +15,7 @@
 #define TS_SYNC_BYTE    0x47
 #define TS_PACKET_SIZE  188
 
+#if 0
 typedef struct ts_adaptation_s
 {
   uint8_t   length;
@@ -30,6 +31,7 @@ typedef struct ts_payload_s
   uint8_t   table_id;
   uint16_t  section_size;
 } ts_payload_t;
+#endif // 0
 
 typedef struct ts_packet_s
 {
@@ -44,9 +46,11 @@ typedef struct ts_packet_s
   uint8_t   afc;            // Adaptation field control
   uint8_t   cc;             // Continuity counter
 
+#if 0
   ts_adaptation_t adaptation;
 
   ts_payload_t    payload;
+#endif // 0
 
   uint8_t   raw_size;
   uint8_t   raw_tab[TS_PACKET_SIZE];
@@ -75,6 +79,7 @@ class TsFileBase
 
     bool getTsPackets(std::vector<ts_packet_t>& packets);
     bool getTsPackets(std::list<ts_packet_t>& packets);
+    bool getTsPackets(uint16_t pid, std::vector<ts_packet_t>& packets);
 
     bool getTsPids(std::map<uint16_t, ts_pid_t>& pids);
 

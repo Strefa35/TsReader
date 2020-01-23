@@ -26,19 +26,6 @@
 static uint8_t    ts_packet[TS_PACKET_SIZE];
 
 
-template< typename... Args >
-std::string string_sprintf( const char* format, Args... args ) {
-  int length = std::snprintf( nullptr, 0, format, args... );
-  assert( length >= 0 );
-
-  char* buf = new char[length + 1];
-  std::snprintf( buf, length + 1, format, args... );
-
-  std::string str( buf );
-  delete[] buf;
-  return str;
-}
-
 TsFileBase::TsFileBase(std::string fileName)
 {
   DBGS(DbgWrite("++%s(fileName: %s)\n", __func__, fileName.c_str());)
@@ -56,7 +43,6 @@ TsFileBase::TsFileBase(std::string fileName)
 TsFileBase::~TsFileBase()
 {
   DBGS(DbgWrite("++%s()\n", __func__);)
-  //m_ts_packets.clear();
   if (m_fid.is_open())
   {
     m_fid.close();
@@ -143,8 +129,7 @@ void TsFileBase::findTsSyncByte(void)
 void TsFileBase::parseTsPacket(uint64_t offset, uint8_t* packet_ptr, uint32_t packet_size)
 {
   uint8_t*  header_ptr = packet_ptr;
-  uint32_t    packet_idx = 0;
-  ts_packet_t     packet;
+  ts_packet_t packet;
 
   DBGS(DbgWrite("++%s(offset: %ul, header: 0x %02x %02x %02x %02x)\n", __func__,
             offset,
@@ -160,66 +145,16 @@ void TsFileBase::parseTsPacket(uint64_t offset, uint8_t* packet_ptr, uint32_t pa
   packet.afc          = (header_ptr[3] & 0x30) >> 4;
   packet.cc           = (header_ptr[3] & 0x0f);
 
-  packet_idx += 4; // Jump behind packet's header (4 bytes)
-  if (packet.afc & 0x02) // Adaptation field present
-  {
-    packet.adaptation.length  = packet_ptr[packet_idx];
-
-    packet.adaptation.f2      = packet_ptr[packet_idx + 1];
-
-    if (packet.adaptation.f2 & 0x10) // PCR present
-    {
-      packet.adaptation.pcr     = ((uint64_t)(packet_ptr[packet_idx + 2]) << 40) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 3]) << 32) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 4]) << 24) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 5]) << 16) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 6]) << 8) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 7]));
-
-    }
-    else
-    {
-      packet.adaptation.pcr = 0;
-    }
-
-    if (packet.adaptation.f2 & 0x08) // OPCR present
-    {
-      packet.adaptation.opcr    = ((uint64_t)(packet_ptr[packet_idx + 8]) << 40) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 9]) << 32) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 10]) << 24) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 11]) << 16) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 12]) << 8) |
-                                  ((uint64_t)(packet_ptr[packet_idx + 13]));
-    }
-    else
-    {
-      packet.adaptation.opcr = 0;
-    }
-
-    packet.adaptation.splice  = packet_ptr[packet_idx + 14];
-
-    packet.adaptation.private_length = packet_ptr[packet_idx + 15];
-
-    packet_idx += packet.adaptation.length + 1;
-  }
-  if (packet.afc & 0x01) // Payload data
-  {
-    packet.payload.table_id = packet_ptr[packet_idx];
-    packet.payload.section_size = (packet_ptr[packet_idx + 1] << 8) | packet_ptr[packet_idx + 2];
-  }
-
-  if ((packet.pid >= 0) && (packet.pid <= 31))
+  //if ((packet.pid >= 0) && (packet.pid <= 31))
   {
     memcpy(packet.raw_tab, packet_ptr, packet_size);
     packet.raw_size = packet_size;
   }
 
-  m_ts_packets.push_back(packet);
-
   // list of pids
   m_ts_pids[packet.pid].pid = packet.pid;
   m_ts_pids[packet.pid].count++;
-  if ((packet.pid >= 0) && (packet.pid <= 31))
+  //if ((packet.pid >= 0) && (packet.pid <= 31))
   {
     m_ts_pids[packet.pid].packets.push_back(packet);
   }
@@ -274,17 +209,17 @@ void TsFileBase::toLog()
     {
       ts_packet_t* header = &m_ts_packets[i];
 
-      fid << string_sprintf("Packet id: %lu\n", i);
-      fid << string_sprintf("                         TS file offset: %lu\n", header->file_offset);
-      fid << string_sprintf("                           TS Sync Byte: 0x%02x\n", header->sync_byte);
-      fid << string_sprintf("        Transport error indicator (TEI): %d\n", header->tei);
-      fid << string_sprintf("    Payload unit start indicator (PUSI): %d\n", header->pusi);
-      fid << string_sprintf("                     Transport priority: %d\n", header->tsp);
-      fid << string_sprintf("                                    PID: 0x%04x [ %d ]\n", header->pid, header->pid);
-      fid << string_sprintf("     Transport scrambling control (TSC): 0x%02x\n", header->tsc);
-      fid << string_sprintf("               Adaptation field control: 0x%02x\n", header->afc);
-      fid << string_sprintf("                     Continuity counter: 0x%02x\n", header->cc);
-      fid << string_sprintf("---------------------------------------------------------\n");
+      fid << wxString::Format("Packet id: %lu\n", i);
+      fid << wxString::Format("                         TS file offset: %lu\n", header->file_offset);
+      fid << wxString::Format("                           TS Sync Byte: 0x%02x\n", header->sync_byte);
+      fid << wxString::Format("        Transport error indicator (TEI): %d\n", header->tei);
+      fid << wxString::Format("    Payload unit start indicator (PUSI): %d\n", header->pusi);
+      fid << wxString::Format("                     Transport priority: %d\n", header->tsp);
+      fid << wxString::Format("                                    PID: 0x%04x [ %d ]\n", header->pid, header->pid);
+      fid << wxString::Format("     Transport scrambling control (TSC): 0x%02x\n", header->tsc);
+      fid << wxString::Format("               Adaptation field control: 0x%02x\n", header->afc);
+      fid << wxString::Format("                     Continuity counter: 0x%02x\n", header->cc);
+      fid << wxString::Format("---------------------------------------------------------\n");
     }
     fid.close();
   }
@@ -298,6 +233,22 @@ bool TsFileBase::getTsPackets(std::vector<ts_packet_t>& packets)
   DBGS(DbgWrite("++%s(VECTOR)\n", __func__);)
   packets = m_ts_packets;
   DBGR(DbgWrite("--%s(VECTOR)\n", __func__);)
+  return result;
+}
+
+bool TsFileBase::getTsPackets(uint16_t pid, std::vector<ts_packet_t>& packets)
+{
+  std::map<uint16_t, ts_pid_t>::iterator it;
+  bool result = false;
+
+  DBGS(DbgWrite("++%s(pid: 0x%04X [%d])\n", __func__, pid, pid);)
+  it = m_ts_pids.find(pid);
+  if (it != m_ts_pids.end())
+  {
+    packets = ((ts_pid_t)(it->second)).packets;
+    result = true;
+  }
+  DBGR(DbgWrite("--%s()\n", __func__);)
   return result;
 }
 

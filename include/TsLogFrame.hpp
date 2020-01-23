@@ -3,10 +3,10 @@
 
 
 class TsLogFrame : public wxFrame,
-                      private wxLog
+                   private wxLog
 {
   public:
-    TsLogFrame(const wxString& title);
+    TsLogFrame(wxWindow *parent, const wxString& title);
     virtual ~TsLogFrame();
 
   protected:
