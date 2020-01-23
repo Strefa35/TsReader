@@ -1,0 +1,11 @@
+
+// #define DBG_LVL_TSFILE           (DBG_S | DBG_R | DBG_E | DBG_W | DBG_1)
+// #define DBG_LVL_TSMSG		        (DBG_S | DBG_R | DBG_E | DBG_W | DBG_1)
+// #define DBG_LVL_TSLOGFRAME       (DBG_S | DBG_R | DBG_E | DBG_W | DBG_1)
+// #define DBG_LVL_TSTHREAD         (DBG_S | DBG_R | DBG_E | DBG_W | DBG_1)
+
+// #define DBG_LVL_TSREADERAPP      (DBG_S | DBG_R | DBG_E | DBG_W | DBG_1)
+// #define DBG_LVL_TSREADERFRAME		(DBG_S | DBG_R | DBG_E | DBG_W | DBG_1)
+
+//#define DBG_LVL_TSREADERFRAME		(DBG_ALL)
+
