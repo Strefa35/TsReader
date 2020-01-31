@@ -28,7 +28,6 @@ class TsReaderFrame : public wxFrame
     void parsePacket(wxTreeItemId& tree_root, ts_packet_t* packet_ptr);
 
     bool preparePacketsTree(wxTreeItemId& tree_root, std::vector<ts_packet_t>& packets);
-    bool preparePacketsTree(wxTreeItemId& tree_root, std::list<ts_packet_t>& packets);
 
     void prepareSectionsTree(wxTreeItemId& tree_root, uint16_t pid, std::vector<ts_packet_t>& packets);
 
@@ -63,6 +62,9 @@ class TsReaderFrame : public wxFrame
     TsFileBase*   m_tsFile;
 
     std::map<uint16_t, std::string> m_pidName;
+
+    std::vector<ts_packet_t>*     m_packets;
+    std::map<uint16_t, ts_pid_t>* m_pids;
 
 };
 

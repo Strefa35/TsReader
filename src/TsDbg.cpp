@@ -1,3 +1,6 @@
+/*
+ * Copyright (c) 2019, 4Embedded.Systems all rights reserved.
+ */
 
 #include <wx/wxprec.h>
 
@@ -12,7 +15,6 @@
 
 
 static uint8_t    ts_dbg_buffer[TS_DBG_BUFFER_MAX];
-
 
 
 void DbgMemory(const uint8_t* data_ptr, const uint32_t data_len)

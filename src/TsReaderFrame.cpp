@@ -55,18 +55,15 @@ wxEND_EVENT_TABLE()
 
 TsReaderFrame::TsReaderFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
         : wxFrame(NULL, wxID_ANY, title, pos, size),
-          m_logger(nullptr), m_tsFile(nullptr)
+          m_logger(nullptr), m_tsFile(nullptr),
+          m_packets(nullptr), m_pids(nullptr)
 {
   DBGS(DbgWrite("++%s()\n", __func__);)
-
-  //new wxLogWindow(this, _T("log"));
 
   setPidNames();
 
   createMenuBar();
   createStatusBar();
-
-  //SetStatusText( "Welcome to wxWidgets!" );
 
   m_TreeCtrl = new wxTreeCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTR_DEFAULT_STYLE, wxDefaultValidator);
   m_TreeCtrlRoot = m_TreeCtrl->AddRoot(_T("TS stream"));
@@ -197,7 +194,7 @@ bool TsReaderFrame::preparePacketsTree(wxTreeItemId& tree_root, std::vector<ts_p
   uint64_t packets_idx = 0;
   wxTreeItemId root, item_root, item_leaf, header_root, raw_root;
 
-  DBGS(DbgWrite("++%s(VECTOR)\n", __func__);)
+  DBGS(DbgWrite("++%s()\n", __func__);)
   DBGS(DbgWrite("[%s] Packets cnt: %lu\n", __func__, packets_cnt);)
 
   m_progress->SetRange(packets_cnt);
@@ -261,40 +258,6 @@ bool TsReaderFrame::preparePacketsTree(wxTreeItemId& tree_root, std::vector<ts_p
       raw_string += wxString::Format("%02X ", packet->raw_tab[raw_idx]);
     }
     item_leaf = m_TreeCtrl->AppendItem(raw_root, raw_string);
-  }
-  m_progress->SetValue(0);
-
-  DBGR(DbgWrite("--%s()\n", __func__);)
-  return true;
-}
-
-bool TsReaderFrame::preparePacketsTree(wxTreeItemId& tree_root, std::list<ts_packet_t>& packets)
-{
-  uint64_t packets_cnt = packets.size();
-  uint64_t packets_idx = 0;
-  wxTreeItemId root, item_root, item_leaf;
-
-  DBGS(DbgWrite("++%s(LIST)\n", __func__);)
-  DBGS(DbgWrite("[%s] Packets cnt: %lu\n", __func__, packets_cnt);)
-
-  m_progress->SetRange(packets_cnt);
-  root = m_TreeCtrl->AppendItem(tree_root, wxString::Format("Packets [%lu]", packets_cnt));
-  for (std::list<ts_packet_t>::iterator it = packets.begin(); it != packets.end(); it++)
-  {
-    ts_packet_t* header = (ts_packet_t*) &(*it);
-
-    m_progress->SetValue(++packets_idx);
-
-    item_root = m_TreeCtrl->AppendItem(root, wxString::Format("{ %7lu / %12lu } [0x%04x / %5d ]", packets_idx, header->file_offset, header->pid, header->pid));
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("TS file offset: %lu", header->file_offset));
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("TS Sync Byte: 0x%02x", header->sync_byte));
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("Transport error indicator (TEI): %d", header->tei));
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("Payload unit start indicator (PUSI): %d", header->pusi));
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("Transport priority: %d", header->tsp));
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("PID: 0x%04x [ %d ]", header->pid, header->pid));
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("Transport scrambling control (TSC): 0x%02x", header->tsc));
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("Adaptation field control: 0x%02x", header->afc));
-    item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("Continuity counter: 0x%02x", header->cc));
   }
   m_progress->SetValue(0);
 
@@ -397,13 +360,15 @@ void TsReaderFrame::parseNit(wxTreeItemId& tree_root, uint16_t pid)
   std::vector<ts_packet_t> packets;
 
   DBGS(DbgWrite("++%s(pid: 0x%04X [%d])\n", __func__, pid, pid);)
-  if (m_tsFile->getTsPackets(pid, packets))
+#if 0
+  if (m_tsFile->getTsPackets(pid, &m_packets))
   {
-    if (packets.size())
+    if (m_packets->size())
     {
-      preparePacketsTree(tree_root, packets);
+      preparePacketsTree(tree_root, &packets);
     }
   }
+#endif
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
 
@@ -465,6 +430,7 @@ void TsReaderFrame::parsePacket(wxTreeItemId& root_tree, ts_packet_t* packet_ptr
 
     if (packet_ptr->afc & TS_AFC_PAYLOAD)
     {
+#if 0
       uint8_t*  sect_ptr  = &packet_ptr->raw_tab[packet_idx];
       uint16_t  sect_size = 0;
 
@@ -472,9 +438,8 @@ void TsReaderFrame::parsePacket(wxTreeItemId& root_tree, ts_packet_t* packet_ptr
       sect_size |= ((uint8_t) (packet_ptr->raw_tab[packet_idx + 2]));
 
       parseSection(root_tree, packet_ptr->pid, sect_ptr, sect_size);
-
+#endif
     }
-
   }
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
@@ -557,23 +522,21 @@ void TsReaderFrame::parseTsFile(wxString& fileName)
   {
     if (m_tsFile->parse())
     {
-      std::vector<ts_packet_t>  packets;
-      //std::list<ts_packet_t>    packets;
-      std::map<uint16_t, ts_pid_t>   pids;
-
-      m_tsFile->getTsPackets(packets);
-      m_tsFile->getTsPids(pids);
-
-      DBG1(DbgWrite("TS Packets cnt: %d\n", packets.size());)
-      DBG1(DbgWrite("   TS Pids cnt: %d\n", pids.size());)
-
-      if (packets.size())
+      if (m_tsFile->getTsPackets(&m_packets))
       {
-        preparePacketsTree(m_TreeCtrlRoot, packets);
+        DBG1(DbgWrite("TS Packets cnt: %d\n", m_packets->size());)
+        if (m_packets->size())
+        {
+          preparePacketsTree(m_TreeCtrlRoot, *m_packets);
+        }
       }
-      if (pids.size())
+      if (m_tsFile->getTsPids(&m_pids))
       {
-        preparePidsTree(pids);
+        DBG1(DbgWrite("   TS Pids cnt: %d\n", m_pids->size());)
+        if (m_pids->size())
+        {
+          preparePidsTree(*m_pids);
+        }
       }
     }
     else

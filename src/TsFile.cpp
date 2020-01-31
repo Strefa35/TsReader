@@ -1,4 +1,9 @@
+/*
+ * Copyright (c) 2019, 4Embedded.Systems all rights reserved.
+  */
+
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <cassert>
 #include <sstream>
@@ -14,28 +19,40 @@
 #include "TsDbg.hpp"
 
 
-//#define TS_USE_FILE_SEEK
+#define TS_HEADER_SIZE      (4)
+#define TS_PACKET_SIZE      (188)
+#define TS_BUFFER           (TS_PACKET_SIZE + 48) // + 48 bytes of safe area
+
+#define TS_SYNC_BYTE        0x47
+
+#define TS_AFC_PAYLOAD      (0x1)
+#define TS_AFC_ADAPTATION   (0x2)
 
 
-//#define TS_HEADER_SIZE  4
-//#define TS_BUFFER       (16 * 1024)
-//#define TS_SYNC_BYTE    0x47
-//#define TS_PACKET_SIZE  188
-
-
-static uint8_t    ts_packet[TS_PACKET_SIZE];
-
-
-TsFileBase::TsFileBase(std::string fileName)
+TsFileBase::TsFileBase(std::string fileName) :
+      m_packet_size(TS_PACKET_SIZE),
+      m_ts_packet(nullptr)
 {
   DBGS(DbgWrite("++%s(fileName: %s)\n", __func__, fileName.c_str());)
+
   m_fSize = 0;
   m_filename = fileName;
 
   m_fid.open(m_filename, std::ifstream::in | std::ifstream::binary);
   if (m_fid.is_open())
   {
-    getSize();
+    if (getSize())
+    {
+      m_packet_size = 0;
+      if (m_packet_size || findTsPacketSize())
+      {
+        m_ts_packet = new uint8_t [TS_BUFFER];
+        if (m_ts_packet)
+        {
+          std::memset(m_ts_packet, 0x00, TS_BUFFER);
+        }
+      }
+    }
   }
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
@@ -43,6 +60,10 @@ TsFileBase::TsFileBase(std::string fileName)
 TsFileBase::~TsFileBase()
 {
   DBGS(DbgWrite("++%s()\n", __func__);)
+  if (m_ts_packet)
+  {
+    delete[] m_ts_packet;
+  }
   if (m_fid.is_open())
   {
     m_fid.close();
@@ -50,14 +71,15 @@ TsFileBase::~TsFileBase()
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
 
-void TsFileBase::getSize(void)
+uint64_t TsFileBase::getSize(void)
 {
   DBGS(DbgWrite("++%s()\n", __func__);)
   m_fid.seekg(0, m_fid.end);
-  m_fSize = m_fid.tellg();
-  DBG1(DbgWrite("[%s] m_fSize: %lu\n", __func__, m_fSize);)
+  m_fSize = (uint64_t) m_fid.tellg();
+  DBG1(DbgWrite("[%s] m_fSize: %u\n", __func__, m_fSize);)
   m_fid.seekg(0, m_fid.beg);
   DBGR(DbgWrite("--%s()\n", __func__);)
+  return m_fSize;
 }
 
 bool TsFileBase::setSeek(uint64_t offset)
@@ -74,64 +96,123 @@ bool TsFileBase::setSeek(uint64_t offset)
   return result;
 }
 
-#ifdef TS_USE_FILE_SEEK
-void TsFileBase::findTsSyncByte(void)
+bool TsFileBase::findTsPacketSize(void)
 {
-  uint64_t current_idx = m_fid.tellg();
-  uint8_t ts_header[TS_HEADER_SIZE];
+  bool      ts_sync_found = false;
+  bool      ts_error = false;
+  uint64_t  first_packet = 0;
+  uint64_t  current_idx = 0;
+  uint64_t  packet_cnt = 0;
+  uint16_t  packet_size = TS_PACKET_SIZE;
+  uint16_t  last_packet_size = 0;
+  uint8_t   one_byte;
 
   DBGS(DbgWrite("++%s()\n", __func__);)
+  setSeek(0);
   while(!m_fid.eof() && ((current_idx + TS_PACKET_SIZE) <= m_fSize))
   {
-    DBG1(DbgWrite("[%s] idx: %lu\n", __func__, current_idx);)
-    m_fid.read((char*) &ts_header[0], 1);
-    if (ts_header[0] == TS_SYNC_BYTE)
+    DBG1(DbgWrite("\tcurrent_idx: %d\n", current_idx);)
+    setSeek(current_idx);
+    m_fid.read((char*) &one_byte, 1);
+    if (one_byte == TS_SYNC_BYTE)
     {
-      m_fid.read((char*) &ts_header[1], 3);
-
-      parseTsPacket(current_idx, ts_header);
-
-      setSeek(current_idx + TS_PACKET_SIZE);
-
-    }
-    current_idx = m_fid.tellg();
-  }
-  DBG1(DbgWrite("[%s] TS vector size: %lu\n", __func__, m_ts_packets.size());)
-  DBGR(DbgWrite("--%s()\n", __func__);)
-}
-#else
-void TsFileBase::findTsSyncByte(void)
-{
-  uint64_t current_idx = 0;
-
-  DBGS(DbgWrite("++%s()\n", __func__);)
-  while(!m_fid.eof() && ((current_idx + TS_PACKET_SIZE) <= m_fSize))
-  {
-    DBG1(DbgWrite("[%s] idx: %lu\n", __func__, current_idx);)
-    m_fid.read((char*) &ts_packet[0], 1);
-    if (ts_packet[0] == TS_SYNC_BYTE)
-    {
-      m_fid.read((char*) &ts_packet[1], TS_PACKET_SIZE - 1);
-
-      parseTsPacket(current_idx, ts_packet, TS_PACKET_SIZE);
-      current_idx += TS_PACKET_SIZE;
+      DBG1(DbgWrite("\tTS SYNC BYTE - %u\n", current_idx);)
+      packet_cnt++;
+      if (ts_sync_found)
+      {
+        if (last_packet_size && (packet_size != (current_idx - first_packet)))
+        {
+          last_packet_size = current_idx - first_packet;
+          ts_error = true;
+          DBGW(DbgWrite("Packet size is different: %d <--> %d\n", packet_size, last_packet_size);)
+          break; // We have to STOP analysing due to different packet's size in the stream
+        }
+        last_packet_size = current_idx - first_packet;
+        if (last_packet_size != packet_size)
+        {
+          packet_size = last_packet_size;
+        }
+        m_ts_size[packet_size]++;
+        DBG1(DbgWrite("\tpacket_size: %d\n", packet_size);)
+      }
+      else
+      {
+        ts_sync_found = true;
+      }
+      first_packet = current_idx;
+      current_idx += packet_size;
+      if (current_idx >= m_fSize)
+      {
+        m_ts_size[m_fSize - first_packet]++;
+      }
     }
     else
     {
       current_idx++;
     }
+    printf("Checking packets: %d%%\r", (uint8_t) ((100 * current_idx) / m_fSize));
   }
-  DBG1(DbgWrite("[%s] TS Packets cnt: %lu\n", __func__, m_ts_packets.size());)
+
+  printf("TS file checked: ");
+  if (!ts_error)
+  {
+    printf("OK    \n\r");
+    printf("  Packet count: %lu\n\r", packet_cnt);
+    printf("   Packet size: %d\n\r", packet_size);
+
+    m_packet_size = packet_size;
+
+  }
+  else
+  {
+    printf("FAIL\n\r");
+    printf("  Stream has wrong packet size: %d <--> %d\n\r", packet_size, last_packet_size);
+    m_packet_size = 0;
+  }
+
+  printf("Packets:\n\r");
+  for (std::map<uint16_t, uint32_t>::iterator it = m_ts_size.begin(); it != m_ts_size.end(); it++)
+  {
+    printf("    %3d - %d\n\r", it->first, it->second);
+  }
+  DBGR(DbgWrite("--%s() - packet_size: %d, last_packet_size: %d\n", __func__, packet_size, last_packet_size);)
+  return !ts_error;
+}
+
+void TsFileBase::readTsStream(void)
+{
+  uint8_t  header[TS_HEADER_SIZE];
+  uint16_t packet_size = m_packet_size;
+  uint64_t current_idx = 0;
+
+  DBGS(DbgWrite("++%s()\n", __func__);)
+  setSeek(0);
+  while(!m_fid.eof() && ((current_idx + packet_size) <= m_fSize))
+  {
+    DBG1(DbgWrite("[%s] idx: %lu\n", __func__, current_idx);)
+    setSeek(current_idx);
+    m_fid.read((char*) &header[0], 1);
+    if (header[0] == TS_SYNC_BYTE)
+    {
+      m_fid.read((char*) &header[1], TS_HEADER_SIZE - 1);
+      parseTsHeader(current_idx, header, TS_HEADER_SIZE);
+      current_idx += packet_size;
+    }
+    else
+    {
+      current_idx++;
+    }
+    printf("Reading packets: %d%%\r", (uint8_t) ((100 * current_idx) / m_fSize));
+  }
+  printf("Reading packets: DONE\n\r");
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
-#endif
 
-void TsFileBase::parseTsPacket(uint64_t offset, uint8_t* packet_ptr, uint32_t packet_size)
+void TsFileBase::parseTsHeader(uint64_t offset, uint8_t* header_ptr, uint32_t header_size)
 {
-  uint8_t*  header_ptr = packet_ptr;
   ts_packet_t packet;
 
-  DBGS(DbgWrite("++%s(offset: %ul, header: 0x %02x %02x %02x %02x)\n", __func__,
+  DBGS(DbgWrite("++%s(offset: %lu, header: 0x %02x %02x %02x %02x)\n", __func__,
             offset,
             header_ptr[0], header_ptr[1], header_ptr[2], header_ptr[3]);)
 
@@ -145,19 +226,12 @@ void TsFileBase::parseTsPacket(uint64_t offset, uint8_t* packet_ptr, uint32_t pa
   packet.afc          = (header_ptr[3] & 0x30) >> 4;
   packet.cc           = (header_ptr[3] & 0x0f);
 
-  //if ((packet.pid >= 0) && (packet.pid <= 31))
-  {
-    memcpy(packet.raw_tab, packet_ptr, packet_size);
-    packet.raw_size = packet_size;
-  }
+  packet.raw_size = 0;
 
   // list of pids
   m_ts_pids[packet.pid].pid = packet.pid;
   m_ts_pids[packet.pid].count++;
-  //if ((packet.pid >= 0) && (packet.pid <= 31))
-  {
-    m_ts_pids[packet.pid].packets.push_back(packet);
-  }
+  m_ts_pids[packet.pid].packets.push_back(packet);
 
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
@@ -167,7 +241,7 @@ bool TsFileBase::parse(void)
   bool result = true;
 
   DBGS(DbgWrite("++%s()\n", __func__);)
-  findTsSyncByte();
+  readTsStream();
   DBGR(DbgWrite("--%s() - result: %d\n", __func__, result);)
   return result;
 }
@@ -226,17 +300,17 @@ void TsFileBase::toLog()
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
 
-bool TsFileBase::getTsPackets(std::vector<ts_packet_t>& packets)
+bool TsFileBase::getTsPackets(std::vector<ts_packet_t>** packets)
 {
   bool result = true;
 
   DBGS(DbgWrite("++%s(VECTOR)\n", __func__);)
-  packets = m_ts_packets;
+  *packets = &m_ts_packets;
   DBGR(DbgWrite("--%s(VECTOR)\n", __func__);)
   return result;
 }
-
-bool TsFileBase::getTsPackets(uint16_t pid, std::vector<ts_packet_t>& packets)
+#if 0
+bool TsFileBase::getTsPackets(uint16_t pid, std::vector<ts_packet_t>** packets)
 {
   std::map<uint16_t, ts_pid_t>::iterator it;
   bool result = false;
@@ -245,29 +319,19 @@ bool TsFileBase::getTsPackets(uint16_t pid, std::vector<ts_packet_t>& packets)
   it = m_ts_pids.find(pid);
   if (it != m_ts_pids.end())
   {
-    packets = ((ts_pid_t)(it->second)).packets;
+    *packets = &(((ts_pid_t)(it->second)).packets);
     result = true;
   }
   DBGR(DbgWrite("--%s()\n", __func__);)
   return result;
 }
-
-bool TsFileBase::getTsPackets(std::list<ts_packet_t>& packets)
-{
-  bool result = true;
-
-  DBGS(DbgWrite("++%s(LIST)\n", __func__);)
-  packets = m_ts_list;
-  DBGR(DbgWrite("--%s(LIST)\n", __func__);)
-  return result;
-}
-
-bool TsFileBase::getTsPids(std::map<uint16_t, ts_pid_t>& pids)
+#endif
+bool TsFileBase::getTsPids(std::map<uint16_t, ts_pid_t>** pids)
 {
   bool result = true;
 
   DBGS(DbgWrite("++%s()\n", __func__);)
-  pids = m_ts_pids;
+  *pids = &m_ts_pids;
   DBGR(DbgWrite("--%s()\n", __func__);)
   return result;
 }

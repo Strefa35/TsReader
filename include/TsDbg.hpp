@@ -1,8 +1,13 @@
+/*
+ * Copyright (c) 2019, 4Embedded.Systems all rights reserved.
+ */
+
 #ifndef TSDBG_HPP_INCLUDED
 #define TSDBG_HPP_INCLUDED
 
-#include <stdio.h>
-#include <stdint.h>
+#include <cstdio>
+#include <cstdint>
+
 
 #define WX_DBG
 
