@@ -20,8 +20,8 @@
 
 
 #define TS_HEADER_SIZE      (4)
-#define TS_PACKET_SIZE      (188)
-#define TS_BUFFER           (TS_PACKET_SIZE + 48) // + 48 bytes of safe area
+//#define TS_PACKET_SIZE      (188)
+//#define TS_BUFFER           (TS_PACKET_SIZE + 48) // + 48 bytes of safe area
 
 #define TS_SYNC_BYTE        0x47
 
@@ -150,30 +150,15 @@ bool TsFileBase::findTsPacketSize(void)
     {
       current_idx++;
     }
-    printf("Checking packets: %d%%\r", (uint8_t) ((100 * current_idx) / m_fSize));
   }
 
-  printf("TS file checked: ");
   if (!ts_error)
   {
-    printf("OK    \n\r");
-    printf("  Packet count: %lu\n\r", packet_cnt);
-    printf("   Packet size: %d\n\r", packet_size);
-
     m_packet_size = packet_size;
-
   }
   else
   {
-    printf("FAIL\n\r");
-    printf("  Stream has wrong packet size: %d <--> %d\n\r", packet_size, last_packet_size);
     m_packet_size = 0;
-  }
-
-  printf("Packets:\n\r");
-  for (std::map<uint16_t, uint32_t>::iterator it = m_ts_size.begin(); it != m_ts_size.end(); it++)
-  {
-    printf("    %3d - %d\n\r", it->first, it->second);
   }
   DBGR(DbgWrite("--%s() - packet_size: %d, last_packet_size: %d\n", __func__, packet_size, last_packet_size);)
   return !ts_error;
@@ -181,9 +166,9 @@ bool TsFileBase::findTsPacketSize(void)
 
 void TsFileBase::readTsStream(void)
 {
-  uint8_t  header[TS_HEADER_SIZE];
-  uint16_t packet_size = m_packet_size;
-  uint64_t current_idx = 0;
+  uint8_t*  packet_ptr = m_ts_packet;
+  uint16_t  packet_size = m_packet_size;
+  uint64_t  current_idx = 0;
 
   DBGS(DbgWrite("++%s()\n", __func__);)
   setSeek(0);
@@ -191,20 +176,19 @@ void TsFileBase::readTsStream(void)
   {
     DBG1(DbgWrite("[%s] idx: %lu\n", __func__, current_idx);)
     setSeek(current_idx);
-    m_fid.read((char*) &header[0], 1);
-    if (header[0] == TS_SYNC_BYTE)
+    m_fid.read((char*) &packet_ptr[0], 1);
+    if (packet_ptr[0] == TS_SYNC_BYTE)
     {
-      m_fid.read((char*) &header[1], TS_HEADER_SIZE - 1);
-      parseTsHeader(current_idx, header, TS_HEADER_SIZE);
+      m_fid.read((char*) &packet_ptr[1], TS_HEADER_SIZE - 1);
+      m_fid.read((char*) &packet_ptr[TS_HEADER_SIZE], packet_size - TS_HEADER_SIZE);
+      parseTsHeader(current_idx, packet_ptr, packet_size);
       current_idx += packet_size;
     }
     else
     {
       current_idx++;
     }
-    printf("Reading packets: %d%%\r", (uint8_t) ((100 * current_idx) / m_fSize));
   }
-  printf("Reading packets: DONE\n\r");
   DBGR(DbgWrite("--%s()\n", __func__);)
 }
 
@@ -226,7 +210,8 @@ void TsFileBase::parseTsHeader(uint64_t offset, uint8_t* header_ptr, uint32_t he
   packet.afc          = (header_ptr[3] & 0x30) >> 4;
   packet.cc           = (header_ptr[3] & 0x0f);
 
-  packet.raw_size = 0;
+  packet.raw_size = header_size;
+  memcpy(packet.raw_tab, header_ptr, header_size);
 
   // list of pids
   m_ts_pids[packet.pid].pid = packet.pid;

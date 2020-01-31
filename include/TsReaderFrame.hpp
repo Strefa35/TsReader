@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2019, 4Embedded.Systems all rights reserved.
+ */
+
 #ifndef TSREADERFRAME_HPP_INCLUDED
 #define TSREADERFRAME_HPP_INCLUDED
 

@@ -14,6 +14,8 @@
 #include <map>
 
 #define TS_PACKET_SIZE    (188)
+#define TS_BUFFER         (TS_PACKET_SIZE + 48) // + 48 bytes of safe area
+
 
 typedef struct ts_packet_s
 {
@@ -29,7 +31,7 @@ typedef struct ts_packet_s
   uint8_t   cc;             // Continuity counter
 
   uint8_t   raw_size;
-  uint8_t   raw_tab[TS_PACKET_SIZE];
+  uint8_t   raw_tab[TS_BUFFER];
 
 } ts_packet_t;
 

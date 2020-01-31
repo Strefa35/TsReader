@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2019, 4Embedded.Systems all rights reserved.
+ */
+
 #ifndef TSLOGFRAME_HPP_INCLUDED
 #define TSLOGFRAME_HPP_INCLUDED
 

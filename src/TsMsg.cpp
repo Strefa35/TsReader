@@ -1,4 +1,6 @@
-
+/*
+ * Copyright (c) 2019, 4Embedded.Systems all rights reserved.
+ */
 
 #include "TsMsg.hpp"
 
