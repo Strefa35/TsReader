@@ -502,7 +502,7 @@ bool TsReaderFrame::preparePidsTree(std::map<uint16_t, ts_pid_t>& pids)
     {
       preparePacketsTree(item_root, pid.packets);
 
-      if ((pid.pid >= 0) && (pid.pid <= 31))
+      if (pid.pid <= 31)
       {
         prepareSectionsTree(item_root, pid.pid, pid.packets);
       }
