@@ -249,6 +249,7 @@ bool TsReaderFrame::preparePacketsTree(wxTreeItemId& tree_root, std::vector<ts_p
     }
 #endif // 0
 
+#ifdef TS_FILE_KEEP_RAW_DATA
     raw_root = m_TreeCtrl->AppendItem(item_root, wxString::Format("RAW data [%d]", packet->raw_size));
     wxString  raw_string = "";
     for (uint8_t raw_idx = 0; raw_idx < packet->raw_size; raw_idx++)
@@ -261,6 +262,7 @@ bool TsReaderFrame::preparePacketsTree(wxTreeItemId& tree_root, std::vector<ts_p
       raw_string += wxString::Format("%02X ", packet->raw_tab[raw_idx]);
     }
     item_leaf = m_TreeCtrl->AppendItem(raw_root, raw_string);
+#endif // TS_FILE_KEEP_RAW_DATA
   }
   m_progress->SetValue(0);
 
@@ -422,6 +424,7 @@ void TsReaderFrame::parsePacket(wxTreeItemId& root_tree, ts_packet_t* packet_ptr
 
     if (packet_ptr->afc & TS_AFC_ADAPTATION)
     {
+#if 0
       uint8_t adaptation_field_length = packet_ptr->raw_tab[packet_idx++];
 
       if (adaptation_field_length)
@@ -429,6 +432,7 @@ void TsReaderFrame::parsePacket(wxTreeItemId& root_tree, ts_packet_t* packet_ptr
 
       }
       packet_idx += adaptation_field_length;
+#endif
     }
 
     if (packet_ptr->afc & TS_AFC_PAYLOAD)
@@ -461,8 +465,10 @@ void TsReaderFrame::prepareSectionsTree(wxTreeItemId& tree_root, uint16_t pid, s
   {
     ts_packet_t* packet = &packets[i];
 
+#ifdef TS_FILE_KEEP_RAW_DATA
     DBG2(DbgWrite("Packet %d, size: %d\n", i, packet->raw_size);)
     DBG3(DbgMemory(packet->raw_tab, packet->raw_size);)
+#endif // TS_FILE_KEEP_RAW_DATA
 
     item_leaf = m_TreeCtrl->AppendItem(item_root, wxString::Format("{ section: %lu }", i + 1));
     parsePacket(item_leaf, packet);

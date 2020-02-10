@@ -210,8 +210,10 @@ void TsFileBase::parseTsHeader(uint64_t offset, uint8_t* header_ptr, uint32_t he
   packet.afc          = (header_ptr[3] & 0x30) >> 4;
   packet.cc           = (header_ptr[3] & 0x0f);
 
+#ifdef TS_FILE_KEEP_RAW_DATA
   packet.raw_size = header_size;
   memcpy(packet.raw_tab, header_ptr, header_size);
+#endif // TS_FILE_KEEP_RAW_DATA
 
   // list of pids
   m_ts_pids[packet.pid].pid = packet.pid;

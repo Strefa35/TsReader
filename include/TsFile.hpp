@@ -30,8 +30,10 @@ typedef struct ts_packet_s
   uint8_t   afc;            // Adaptation field control
   uint8_t   cc;             // Continuity counter
 
+#ifdef TS_FILE_KEEP_RAW_DATA
   uint8_t   raw_size;
   uint8_t   raw_tab[TS_BUFFER];
+#endif // TS_FILE_KEEP_RAW_DATA
 
 } ts_packet_t;
 
