@@ -7,6 +7,8 @@
 #ifndef WX_PRECOMP
     #include <wx/wx.h>
 #endif
+#include <cstring>
+
 
 #include "TsDbg.hpp"
 
@@ -29,8 +31,8 @@ void DbgMemory(const uint8_t* data_ptr, const uint32_t data_len)
   {
     // insert HEX
     {
-      sprintf(line, "%s %02X", line, data_ptr[data_idx]);
-      sprintf(ascii, "%s %c", ascii, ((data_ptr[data_idx] >= 32) && (data_ptr[data_idx] <= 127)) ? data_ptr[data_idx] : '.');
+      sprintf(line + strlen(line), " %02X", data_ptr[data_idx]);
+      sprintf(ascii + strlen(ascii), " %c", ((data_ptr[data_idx] >= 32) && (data_ptr[data_idx] <= 127)) ? data_ptr[data_idx] : '.');
     }
     // end HEX line
     if (data_idx && ((data_idx + 1) % TS_DBG_COLUMNS) == 0)
@@ -45,8 +47,8 @@ void DbgMemory(const uint8_t* data_ptr, const uint32_t data_len)
   {
     for (uint32_t idx = 0; idx < stuffing; idx++)
     {
-      sprintf(line, "%s %s", line, "  ");
-      sprintf(ascii, "%s %c", ascii, ' ');
+      strcat(line, "   ");
+      strcat(ascii, "  ");
     }
     DbgWrite("[%8d]\t%s\t%s\n", data_len - TS_DBG_COLUMNS, line, ascii);
   }

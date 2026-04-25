@@ -65,7 +65,7 @@ void TsLogFrame::DoLogRecord(wxLogLevel level,
   DoLogLine
   (
     m_TxtCtrl,
-    wxDateTime(info.timestamp).FormatISOTime(),
+    wxDateTime(static_cast<time_t>(info.timestampMS / 1000)).FormatISOTime(),
     info.threadId == wxThread::GetMainId()
         ? wxString("[ main ] -> ")
         : wxString::Format("[ %lx ] -> ", info.threadId),

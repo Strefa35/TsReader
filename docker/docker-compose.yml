@@ -1,0 +1,39 @@
+# Docker Compose for TsReader build environment
+# Ubuntu 24.04 + wxWidgets 3.3.2 (built from source)
+#
+# Usage:
+#   Build the builder image:    docker compose build
+#   Compile TsReader:           docker compose run --rm build
+#   Interactive shell:          docker compose run --rm shell
+
+services:
+  build:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: tsreader-builder:wx332
+    volumes:
+      - ..:/workspace
+      - tsreader-build-cache:/workspace/build
+    working_dir: /workspace
+    command: >
+      sh -c "mkdir -p build &&
+             cd build &&
+             cmake .. &&
+             make -j$(nproc)"
+
+  shell:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: tsreader-builder:wx332
+    volumes:
+      - ..:/workspace
+      - tsreader-build-cache:/workspace/build
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: bash
+
+volumes:
+  tsreader-build-cache:
