@@ -14,11 +14,16 @@ services:
     image: tsreader-builder:wx332
     volumes:
       - ..:/workspace
-      - tsreader-build-cache:/workspace/build
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     working_dir: /workspace
     command: >
-      sh -c "mkdir -p build &&
-             cd build &&
+      sh -c "BUILD_DIR=build;
+             if [ -e \"$$BUILD_DIR\" ] && [ ! -w \"$$BUILD_DIR\" ]; then
+               echo \"build is not writable for $(id -u):$(id -g), using build-user\";
+               BUILD_DIR=build-user;
+             fi;
+             mkdir -p \"$$BUILD_DIR\" &&
+             cd \"$$BUILD_DIR\" &&
              cmake .. &&
              make -j$(nproc)"
 
@@ -29,11 +34,8 @@ services:
     image: tsreader-builder:wx332
     volumes:
       - ..:/workspace
-      - tsreader-build-cache:/workspace/build
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     working_dir: /workspace
     stdin_open: true
     tty: true
     command: bash
-
-volumes:
-  tsreader-build-cache:

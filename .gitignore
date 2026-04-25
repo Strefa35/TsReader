@@ -28,6 +28,9 @@ TsReader
 *.swo
 *~
 
+# Local environment files
+.env.local
+
 # OS
 .DS_Store
 Thumbs.db

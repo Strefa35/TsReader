@@ -13,29 +13,36 @@ Status: validated on 2026-04-24. Image `tsreader-builder:wx332` builds successfu
 ### Build with Docker Compose
 
 ```bash
-# 1. Build the Docker image (first time only, takes ~10-15 min)
-docker compose -f docker/docker-compose.yml build
+# 0. Create a local env file with your user/group IDs
+printf "LOCAL_UID=%s\nLOCAL_GID=%s\n" "$(id -u)" "$(id -g)" > .env.local
 
-# 2. Compile TsReader (output goes to build/)
-docker compose -f docker/docker-compose.yml run --rm build
+# 1. Build the Docker image (first time only, takes ~10-15 min)
+docker compose --env-file .env.local -f docker/docker-compose.yml build
+
+# 2. Compile TsReader
+#    Default output: build/
+#    Fallback output (if build/ is not writable): build-user/
+docker compose --env-file .env.local -f docker/docker-compose.yml run --rm build
 
 # 3. The binary is available at:
-ls build/TsReader
+ls build/TsReader || ls build-user/TsReader
 ```
 
 ### Interactive Shell in Container
 
 ```bash
-docker compose -f docker/docker-compose.yml run --rm shell
+docker compose --env-file .env.local -f docker/docker-compose.yml run --rm shell
 # Inside container:
-mkdir -p build && cd build && cmake .. && make -j$(nproc)
+BUILD_DIR=build
+if [ -e "$BUILD_DIR" ] && [ ! -w "$BUILD_DIR" ]; then BUILD_DIR=build-user; fi
+mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR" && cmake .. && make -j$(nproc)
 ```
 
 ### Build Image Manually (without Compose)
 
 ```bash
 docker build -f docker/Dockerfile -t tsreader-builder:wx332 .
-docker run --rm -v "$PWD":/workspace tsreader-builder:wx332 \
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/workspace tsreader-builder:wx332 \
     sh -c "cd /workspace && mkdir -p build && cd build && cmake .. && make -j\$(nproc)"
 ```
 
@@ -268,13 +275,32 @@ make VERBOSE=1
 cmake --build . --verbose
 ```
 
+### CMake Error: Unable to (re)create pkgRedirects
+
+Symptom:
+- `CMake Error: Unable to (re)create the private pkgRedirects directory: /workspace/build/CMakeFiles/pkgRedirects`
+
+Cause:
+- The host `build/` directory exists but is not writable by the container user (`LOCAL_UID:LOCAL_GID`), often after previous root-owned builds.
+
+Current Compose behavior:
+- `docker/docker-compose.yml` automatically falls back to `build-user/` when `build/` is not writable.
+
+Optional fix (restore default `build/` usage):
+```bash
+export LOCAL_UID=$(id -u)
+export LOCAL_GID=$(id -g)
+docker compose --env-file .env.local -f docker/docker-compose.yml run --rm --user root \
+  build sh -c "mkdir -p /workspace/build && chown -R ${LOCAL_UID}:${LOCAL_GID} /workspace/build"
+```
+
 ## Clean Build
 
 To perform a clean rebuild:
 
 ```bash
-# Remove build directory
-rm -rf build
+# Remove both possible build directories
+rm -rf build build-user
 
 # Recreate and rebuild
 mkdir build

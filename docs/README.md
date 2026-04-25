@@ -71,6 +71,7 @@ Contains:
 Contains:
 - Docker-first build workflow (Ubuntu 24.04 + wxWidgets 3.3.2)
 - Docker Compose workflow for reproducible builds
+- Automatic fallback to `build-user/` when `build/` is not writable
 - Prerequisites and dependencies
 - Installation instructions for each platform
 - Build steps (configure, compile, run)
@@ -205,7 +206,7 @@ Table containing network-level information.
 | OVERVIEW.md | 2026-04-24 | 1.0 |
 | ARCHITECTURE.md | 2026-04-24 | 1.0 |
 | COMPONENTS.md | 2026-04-24 | 1.0 |
-| BUILD.md | 2026-04-24 | 1.1 |
+| BUILD.md | 2026-04-24 | 1.2 |
 | USER_GUIDE.md | 2026-04-24 | 1.0 |
 | DEVELOPMENT.md | 2026-04-24 | 1.0 |
 | IMPLEMENTATION_ROADMAP.md | 2026-04-24 | 1.0 |

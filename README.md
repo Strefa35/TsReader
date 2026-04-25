@@ -33,12 +33,24 @@ A desktop application for reading, parsing, and analyzing **MPEG-2 Transport Str
 ### Building (Recommended: Docker)
 
 ```bash
-docker compose -f docker/docker-compose.yml build
-docker compose -f docker/docker-compose.yml run --rm build
-ls build/TsReader
+# 0. Create local env for user/group mapping inside container
+printf "LOCAL_UID=%s\nLOCAL_GID=%s\n" "$(id -u)" "$(id -g)" > .env.local
+
+# 1. Build image
+docker compose --env-file .env.local -f docker/docker-compose.yml build
+
+# 2. Compile TsReader
+docker compose --env-file .env.local -f docker/docker-compose.yml run --rm build
+
+# 3. Binary location
+# Default: build/TsReader
+# Fallback (if build/ is not writable): build-user/TsReader
+ls build/TsReader || ls build-user/TsReader
 ```
 
 This environment uses Ubuntu 24.04 and wxWidgets 3.3.2 built from source.
+
+If you previously ran container builds as root, `build/` may become non-writable for your user. Current compose config automatically falls back to `build-user/` in that case.
 
 ### Building (Native)
 
