@@ -495,6 +495,8 @@ bool TsReaderFrame::preparePidsTree(std::map<uint16_t, ts_pid_t>& pids)
   {
     ts_pid_t pid = it->second;
 
+    // Nested tree builders reuse the same gauge and may change its range.
+    m_progress->SetRange(pids_cnt);
     m_progress->SetValue(++pids_idx);
 
     item_root = m_TreeCtrl->AppendItem(root, wxString::Format("PID: 0x%04x [%4d] [%-12s] - %lu", pid.pid, pid.pid, getPidName(pid.pid).c_str(), pid.count));
@@ -566,8 +568,8 @@ void TsReaderFrame::OnOpen(wxCommandEvent& event)
 
   DBGS(DbgWrite("++%s()\n", __func__);)
 
-  wxFileDialog openFileDialog(this, _("Open TS stream"), "", "*.ts",
-                     "TS files (*.ts)|*.mpeg",
+  wxFileDialog openFileDialog(this, _("Open TS stream"), "", "",
+                     "TS files (*.ts;*.TS;*.mpeg;*.MPEG;*.*)|*.ts;*.TS;*.mpeg;*.MPEG;*.*|All files (*.*)|*.*",
                      wxFD_OPEN | wxFD_FILE_MUST_EXIST);
   if (openFileDialog.ShowModal() == wxID_OK)
   {
